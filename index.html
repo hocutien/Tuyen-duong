@@ -743,7 +743,7 @@ a{color:var(--ac)}
 <body>
 
 <div id="top">
-  <b>🥮 Phát quà Trung thu</b>
+  <b>🥮 Phát quà Trung thu</b><span class="hint" style="margin-left:6px;font-size:11px;opacity:.7" title="Phiên bản file đang chạy — dùng để biết đã cập nhật chưa">b21/09 16:30</span>
   <button class="sm" id="khoBtn" onclick="khoUI()">🏭 Kho</button>
   <button class="sm" id="sdBtn" onclick="toggleSD()">💰</button>
   <button class="sm pri" onclick="khoPhieu()">🧾 Phiếu xuất kho</button>
@@ -884,6 +884,15 @@ a{color:var(--ac)}
         <div class="lb">Bề rộng trục đường (khi chạy offline)</div>
         <div class="row"><input type="number" id="corW" min="60" max="2000" step="20" value="200" onchange="setOpt()"><span class="fix hint">mét</span></div>
         <div class="hint" style="margin-bottom:10px">Không gọi được máy chủ dẫn đường thì máy dùng <b>quét trục đường</b>: dò hướng trục lộ của từng đoạn nhà liên tiếp, chiếu lên trục rồi giao một lượt cả hai bên lộ. Số này là bề ngang dải nhà hai bên đường được coi là cùng một trục.</div>
+        <div class="lb">Giao dọc trục — không vòng lại</div>
+        <div class="row"><label class="fix" style="display:flex;align-items:center;gap:6px">
+          <input type="checkbox" id="opPass" onchange="setOpt()">
+          <span>Ưu tiên giao hết một lượt, không quay lại</span></label></div>
+        <div class="row" style="margin-top:4px"><span class="fix hint" style="flex:0 0 auto">Chịu đi thêm tối đa</span>
+          <input type="number" id="passTol" min="0" max="100" step="5" value="25" onchange="setOpt()">
+          <span class="fix hint">%</span></div>
+        <div class="hint" style="margin-bottom:10px">Bật: đi trên một trục lộ thì giao hết nhà hai bên ngay lượt đi, chịu dài thêm trong mức trên còn hơn bỏ qua rồi phải vòng lại. Tắt: máy chỉ chọn đường ngắn nhất.<br>
+        <b>Mặc định TẮT.</b> Đo trên 5 kiểu địa hình (trục lộ thẳng, trục cong ven kênh, nhánh chữ T, nhà rải rác, hai cụm xa nhau) thì bật lên <b>không giảm được nhà nào phải vòng lại</b> mà tốn thêm <b>1,23 km</b>. Chỉ bật khi thấy dòng cảnh báo đỏ "nhà bị chạy ngang qua" ở tab Tuyến.</div>
         <div class="lb">Ngưỡng "đã đi ngang qua nhà"</div>
         <div class="row"><input type="number" id="passR" min="10" max="2000" step="10" value="150" onchange="setOpt()"><span class="fix hint">mét</span></div>
         <div class="hint" style="margin-bottom:10px">Nhà cách lộ trình dưới mức này thì coi như xe đi ngang, <b>phải giao ngay lượt đi</b> chứ không để lượt về. Máy chiếu từng nhà lên đường đi thật rồi sắp lại theo đúng chiều xe chạy.</div>
@@ -980,7 +989,7 @@ function parseLoc(s){
 const KEY='ttxadao_v1';
 const SEED=JSON.parse(document.getElementById('seed').textContent);
 let D={kh:[],depot:null,hubs:{},suffix:'Duyên Hải, Trà Vinh, Việt Nam',nDay:3,route:null,rtype:'',rclus:'',
- rmeta:null,rlaps:null,startPt:null,startTs:'',dmode:'road',avoidFerry:true,roundTrip:true,bikeCap:0,truckCap:0,passR:150,corW:200,prov:'osrm',apikey:'',osrm:'https://router.project-osrm.org'};
+ rmeta:null,rlaps:null,startPt:null,startTs:'',dmode:'road',avoidFerry:true,roundTrip:true,bikeCap:0,truckCap:0,passR:150,corW:200,passFirst:false,passTol:25,prov:'osrm',apikey:'',osrm:'https://router.project-osrm.org'};
 let map,layer,hubLayer,depotMk,pinT=null,sel=null,rline=null;
 const $=i=>document.getElementById(i);
 const esc=s=>(s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -1961,6 +1970,25 @@ function startLabel(){
  if(!D.startPt)return '🏭 kho';
  return '📍 vị trí hiện tại'+(D.startTs?' (lúc '+D.startTs+')':'');
 }
+/* MỘT nút: thử GPS ngay; không được thì mở bảng chọn cách khác.
+   Cách nào cũng tự tính lại tuyến luôn, không phải bấm thêm nút nào. */
+function hereGo(){
+ if(!D.route||!D.route.length){alert('Chưa có tuyến nào đang mở.\n\nBấm 🚚 Sắp tuyến xe tải trước đã.');return}
+ if(navigator.geolocation&&!isLocalPage()){goFromHere();return}
+ hereUI(isLocalPage()?'Trang mở từ bộ nhớ máy nên Chrome chặn GPS. Chọn một trong hai cách dưới.':'');
+}
+function hereUI(msg){
+ const left=D.kh.filter(k=>onTruck(k)).length;
+ $('mbox').innerHTML='<h3 style="margin:0 0 3px">📍 Tôi đang ở đây</h3>'+
+  '<div class="hint" style="margin-bottom:8px">Chỉ chỗ anh đang đứng, máy sắp lại ngay tuyến cho <b>'+left+' nhà còn lại</b>. Đường quay về vẫn tính về kho.</div>'+
+  (msg?'<div class="hint" style="color:#fcd34d;margin-bottom:8px">⚠ '+esc(msg)+'</div>':'')+
+  '<div class="row"><button class="fix pri" style="background:#16a34a;border-color:#16a34a" onclick="closeM();goFromHere()">🛰️ Lấy GPS tự động</button></div>'+
+  '<div class="row" style="margin-top:6px"><button class="fix pri" style="background:#0ea5e9;border-color:#0ea5e9" onclick="closeM();pasteLoc(\'__here\',\'CHỖ TÔI ĐANG ĐỨNG\')">📋 Dán link Google Maps</button></div>'+
+  '<div class="row" style="margin-top:6px"><button class="fix" onclick="closeM();pickHere()">🗺️ Chấm trên bản đồ</button></div>'+
+  (D.startPt?'<div class="row" style="margin-top:10px"><button class="fix sm" onclick="closeM();goFromKho()">🏭 Thôi, tính lại từ kho</button></div>':'')+
+  '<div class="row" style="margin-top:10px"><button onclick="closeM()">Đóng</button></div>';
+ $('modal').classList.add('on');
+}
 function goFromHere(){
  if(!navigator.geolocation){alert('Thiết bị không hỗ trợ định vị.');return}
  busy('Đang lấy vị trí hiện tại…');
@@ -1974,8 +2002,7 @@ function goFromHere(){
   await routeTruck(true);
   alert('✔ Đã tính lại tuyến từ chỗ anh đang đứng.\n\nCòn '+left+' nhà chưa giao. Đường quay về vẫn tính về kho.');
  },e=>{busy(null);
-  if(confirm('Không lấy được GPS.\n\nTrang mở từ thư mục máy (content:// hoặc file://) thì Chrome luôn chặn định vị — không sửa được từ trong trang.\n\nBấm OK để CHẤM CHỖ ANH ĐANG ĐỨNG trên bản đồ (kéo bản đồ cho dấu đỏ trúng chỗ rồi bấm Xác nhận).'))
-   pickHere();},
+  hereUI('Không lấy được GPS: '+(e&&e.message?e.message:'')+'. Chọn cách khác để chỉ chỗ anh đang đứng.');},
  {enableHighAccuracy:true,timeout:15000,maximumAge:0});
 }
 function pickHere(){
@@ -2057,16 +2084,18 @@ function routeView(){
   if(!R){h+='<div class="card" style="border-color:#0ea5e9">'+
    '<b>🚚 Chưa chốt số quà lên xe</b>'+
    '<div class="hint" style="margin-top:3px">Chốt trước khi xe chạy thì mới biết được dư/thiếu khi ở kho có khách tới lấy quà lúc anh đang đi đường.</div>'+
-   '<div class="row" style="margin-top:6px"><button class="fix pri" style="background:#0ea5e9;border-color:#0ea5e9" onclick="departSet()">🚚 Xe đã rời kho — chốt số quà lên xe</button></div></div>';return}
+   '<div class="row" style="margin-top:6px"><button class="fix pri" style="background:#0ea5e9;border-color:#0ea5e9" onclick="departUI()">🚚 Xe đã rời kho — chốt số quà lên xe</button></div></div>';return}
   const bad=R.pSur||R.pMiss;
   h+='<div class="card" style="border-color:'+(bad?'#f97316':'var(--ok)')+'">'+
    '<b style="color:'+(bad?'#fdba74':'#86efac')+'">📦 Trên xe: '+R.pOn+' phần chờ giao'+
    (R.pSur?' • ↩️ dư '+R.pSur:'')+(R.pMiss?' • ⚠ thiếu '+R.pMiss:'')+(bad?'':' • đủ, không dư thiếu')+'</b>'+
-   '<div class="hint" style="margin-top:3px">Rời kho lúc '+esc(D.depart.ts)+' với '+R.took+' phần • đã giao '+R.pDone+'</div>'+
+   '<div class="hint" style="margin-top:3px">Lên hàng lúc '+esc(D.depart.ts)+' • thực xuất '+R.act+' phần'+
+    (R.spare?' <span style="color:'+(R.spare>0?'#fdba74':'#fca5a5')+'">('+(R.spare>0?'dư '+R.spare:'thiếu '+(-R.spare))+' so với danh sách '+R.took+')</span>':'')+
+    ' • đã giao '+R.pDone+'</div>'+
    (R.pSur?'<div class="hint" style="color:#fdba74;margin-top:3px">↩️ '+R.pSur+' phần của '+R.sur.length+' khách đang nằm trên xe mà không giao nữa (khách tự tới kho lấy / liên hệ không được) — chạy xong chở về nhập lại kho.</div>':'')+
    (R.pMiss?'<div class="hint" style="color:#fca5a5;margin-top:3px">⚠ '+R.pMiss+' phần của '+R.miss.length+' khách nằm trên tuyến nhưng quà còn ở kho — phải ghé kho lấy thêm.</div>':'')+
    '<div class="row" style="margin-top:6px"><button class="fix sm'+(bad?' pri':'')+'" '+(bad?'style="background:#f97316;border-color:#f97316" ':'')+'onclick="loadUI()">📦 Xem chi tiết dư/thiếu</button>'+
-   '<button class="fix sm" onclick="departSet()">🔄 Chốt lại (đã ghé kho lấy thêm)</button></div></div>';})();
+   '<button class="fix sm" onclick="departUI()">🔄 Chốt lại (đã ghé kho lấy thêm)</button></div></div>';})();
  if(nS)h+='<div class="card" style="border-color:#ef4444;background:#2a0f12">'+
   '<b style="color:#fca5a5">⚠ Tuyến này chưa khớp với toạ độ vừa sửa</b>'+
   '<div class="hint" style="margin-top:3px">Sau khi sắp tuyến, anh đã đổi vị trí <b>'+nS+' điểm</b>. '+
@@ -2114,13 +2143,18 @@ function routeView(){
     (M.runs?' ('+M.runs+' đoạn trục lộ)':'')+' — không còn nhà bị đi ngang qua mà chưa giao</span>':
     (M.geom||M.mode!=='road'?'<br><span style="color:#86efac">✔ Thứ tự giao đã khớp chiều xe chạy</span>':''))+
   (M.offPath?'<br><span style="color:#fcd34d">⚠ '+M.offPath+' điểm nằm cách lộ hơn '+(M.passR||150)+' m — phải rẽ vào riêng</span>':'')+
+  (function(){const bad=passViol(D.route,nodes.map(n=>n.pt));
+   if(!bad.length)return '<br><span style="color:#86efac">✔ Không nhà nào bị đi ngang qua rồi phải vòng lại</span>';
+   return '<br><span style="color:#fca5a5">⚠ <b>'+bad.length+' nhà bị chạy ngang qua trước khi tới lượt giao</b> — phải vòng lại</span>'+
+    '<div class="hint" style="margin-top:2px">'+bad.slice(0,5).map(x=>{const k=D.kh.find(y=>y.id===x.id);
+      return '• '+esc(k?k.ten:x.id)+' — ngang qua ở chặng '+x.at+', giao ở '+x.giao}).join('<br>')+
+    (bad.length>5?'<br>… và '+(bad.length-5)+' nhà nữa':'')+
+    '<br>Chỉnh ở <b>Cài đặt → Giao dọc trục</b> hoặc bấm 🔄 Sắp lại tối ưu.</div>'})()+
   (M.note?'<br><span style="color:#fcd34d">⚠ '+esc(M.note)+'</span>':'')+'</div>'+
   (lastPin()>=0?'<div class="hint" style="color:#c084fc;margin-top:4px">🔒 <b>Đã chốt tuyến tới điểm '+(lastPin()+1)+'</b> — từ điểm 1 đến đó giữ nguyên, máy chỉ tính lại từ điểm '+(lastPin()+2)+' trở đi.</div>':'')+
   (D.manual?'<div class="hint" style="color:#fdba74;margin-top:4px">✎ Tuyến đang theo <b>thứ tự anh tự sắp</b>. Bấm "🔄 Sắp lại tối ưu" nếu muốn máy tính lại từ đầu.</div>':'')+
   '<div class="row" style="margin-top:5px"><span class="bg'+(D.startPt?' o':'')+'">Xuất phát: '+esc(startLabel())+'</span>'+
-   (truck?'<button class="fix sm pri" style="background:#16a34a;border-color:#16a34a" onclick="goFromHere()">🛰️ GPS: tính tiếp từ chỗ đang đứng</button>'+
-          '<button class="fix sm pri" style="background:#16a34a;border-color:#16a34a" onclick="pickHere()">🗺️ Chấm trên bản đồ</button>'+
-          '<button class="fix sm pri" style="background:#0ea5e9;border-color:#0ea5e9" onclick="pasteLoc(\'__here\',\'CHỖ TÔI ĐANG ĐỨNG\')">📋 Dán link Google Maps</button>':'')+
+   (truck?'<button class="fix pri" style="background:#16a34a;border-color:#16a34a;font-weight:700" onclick="hereGo()">📍 TÔI ĐANG Ở ĐÂY — tính tiếp từ đây</button>':'')+
    (truck&&D.startPt?'<button class="fix sm" onclick="goFromKho()">🏭 Tính lại từ kho</button>':'')+'</div>'+
   '<div class="row" style="margin-top:6px"><button class="fix sm" onclick="recalcRoute()">🔄 Sắp lại tối ưu</button>'+
   '<button class="fix sm" onclick="reLegs()">📏 Đo lại cự ly</button>'+
@@ -2149,7 +2183,7 @@ function routeView(){
    '<button class="fix sm" onclick="routeView()">↺ Huỷ sửa</button></div>'+
   (truck?'<div class="row"><button class="fix pri" style="background:#a855f7;border-color:#a855f7" onclick="schedUI()">⏱️ Lịch trình theo giờ — xem xe tải chờ mất bao lâu</button></div>':'')+
   (D.depot&&D.roundTrip?'<div class="hint" style="margin-top:5px">Sửa thứ tự: gõ thẳng số vào ô vàng trước mỗi điểm (gõ được số lẻ như <b>3.5</b> để chèn vào giữa điểm 3 và 4), sửa xong bao nhiêu điểm cũng được rồi bấm <b>Áp dụng</b> một lần.<br>Bấm <b style="color:#c084fc">⚡</b> trên một điểm: giữ nguyên từ đầu tuyến đến điểm đó, máy sắp lại tối ưu <b>toàn bộ phần phía sau</b>.<br>Tuyến là vòng khép kín về kho, nên nhà gần kho sẽ nằm ở <b>đầu hoặc cuối</b> tuyến — cả hai đều đúng. Muốn đổi thì bấm <b>🔃 Đảo chiều</b>, hoặc dùng ⤒ ⤓ trên từng điểm.</div>':'')+'</div>';
- const disp=nodes.slice(1);let no=0,curLap=0;
+ const disp=nodes.slice(1);let no=0,curLap=0,cum=0;
  /* link Google Maps gom riêng — chỉ vì Google nhận tối đa 10 điểm mỗi link */
  let gl='';
  for(let i=0;i<disp.length;i+=9){
@@ -2164,11 +2198,20 @@ function routeView(){
   '<b>Bấm không mở được, hiện Play Store?</b> Bấm nút 📋 để sao chép link rồi dán vào thanh địa chỉ Chrome, hoặc nhấn giữ nút xanh chọn "Mở trong tab mới".</div>'+
   '<div class="row">'+gl+'</div>'+
   '<div class="row"><button class="fix sm" onclick="expKML()">🌍 Tải KML — mở toàn tuyến bằng Google Earth / app dẫn đường</button></div></div>';
+ h+='<div class="hint" style="margin:8px 0 4px;line-height:1.7">'+
+  '<span class="bg">↳ 0.0 km</span> = quãng <b>từ điểm liền trước</b> tới nhà này &nbsp;•&nbsp; '+
+  '<span class="bg">Σ 0.0</span> = <b>cộng dồn</b> từ lúc xuất phát</div>';
  h+='<div class="leg">';
+ h+='<div class="it st-hen" style="cursor:default;border-color:#0ea5e9"><div class="n">'+
+  '<span>'+(truck?'🏭 XUẤT PHÁT — '+esc(startLabel()):'📍 Điểm tập kết — '+esc(D.rclus))+'</span>'+
+  '<span class="bg">0.0 km</span></div>'+
+  (truck&&D.depot?'<div class="m">'+D.depot[0].toFixed(5)+', '+D.depot[1].toFixed(5)+'</div>':'')+'</div>';
  disp.forEach((n,gi)=>{
+   cum+=(legs[gi]>=FAR/2)?0:legs[gi];
    const km=(legs[gi]>=FAR/2)
-    ?'<span class="bg r" title="Bảng cự ly đường bộ cho thấy không có đường cho xe tải tới đây nếu không qua phà">✖ xe tải không tới được</span>'
-    :'<span class="bg" title="Quãng đường từ điểm liền trước tới đây">'+(legs[gi]/1000).toFixed(1)+' km</span>';
+    ?'<span class="bg r">✖ xe tải không tới được</span>'
+    :'<span class="bg" title="Từ điểm liền trước tới đây">↳ '+(legs[gi]/1000).toFixed(1)+' km</span>'+
+     '<span class="bg" style="opacity:.75" title="Cộng dồn từ lúc xuất phát">Σ '+(cum/1000).toFixed(1)+'</span>';
    if(n.t==='reload'){
     h+='<div class="it st-hen" style="cursor:default"><div class="n"><span>'+
      (truck?'🏭 QUAY VỀ KHO LÊN HÀNG':'🔄 Quay lại điểm tập kết lấy thêm quà')+'</span>'+km+'</div>'+
@@ -2348,6 +2391,21 @@ function pca(xy){
  const L=Math.hypot(vx,vy)||1;
  return {mx:mx,my:my,vx:vx/L,vy:vy/L,along:Math.sqrt(l1),cross:Math.sqrt(l2)};
 }
+/* Đếm nhà mà xe đã chạy ngang qua trước khi tới lượt giao — phải vòng lại. */
+function passViol(route,seq,R){
+ R=R||Math.max(10,+D.passR||150);
+ const s2=(p,a,b)=>{const x=b[0]-a[0],y=b[1]-a[1];
+  if(!x&&!y)return dist(p,a)*1000;
+  let t=((p[0]-a[0])*x+(p[1]-a[1])*y)/(x*x+y*y);t=Math.max(0,Math.min(1,t));
+  return dist(p,[a[0]+t*x,a[1]+t*y])*1000};
+ const bad=[];
+ /* Bỏ qua chặng liền kề: chặng đang chạy TỚI nhà trước đó dĩ nhiên đi sát nhà này.
+    Chỉ tính là "vòng lại" khi đã chạy ngang từ sớm rồi mãi sau mới giao. */
+ route.forEach((id,i)=>{const p=ptOf(id);if(!p)return;
+  for(let k=0;k<i-1&&k<seq.length-1;k++){
+   if(s2(p,seq[k],seq[k+1])<R){bad.push({id:id,at:k+1,giao:i+1,bo:i-k-1});break}}});
+ return bad;
+}
 function corridorSweep(route,W,startPt){
  const P=route.map(ptOf);
  if(!P.length||P.some(p=>!p))return {route:route,fixed:0,runs:0};
@@ -2373,7 +2431,12 @@ function corridorSweep(route,W,startPt){
     for(let z=1;z<q.length;z++)s+=dist(q[z-1],q[z]);
     if(nxt)s+=dist(q[q.length-1],nxt);return s};
    const swept=idx.map(z=>seg[z]);
-   if(pcost(swept)<=pcost(seg)*1.005+0.03){
+   /* Ưu tiên giao hết dọc trục, không vòng lại: chịu đi thêm một quãng nhỏ
+      còn hơn bỏ qua nhà rồi phải quay lại. Tắt thì chỉ nhận khi không dài thêm. */
+   const PF=(D.passFirst===true);
+   const tolM=PF?(1+Math.max(0,+D.passTol||25)/100):1.005;
+   const tolA=PF?0.30:0.03;
+   if(pcost(swept)<=pcost(seg)*tolM+tolA){
     const ns=idx.map(z=>route[i+z]);
     ns.forEach((id,z)=>{if(id!==route[i+z])fixed++});
     ns.forEach(id=>out.push(id));
@@ -2615,7 +2678,59 @@ function khoCalc(){
    Xe rời kho xong, ở nhà vẫn có khách tới kho lấy quà, hoặc gọi lại được khách
    trước đó liên hệ không được. Quà của họ đang nằm trên xe => DƯ, phải chở về.
    Ngược lại khách mới ghim thêm khi xe đã đi => THIẾU, trên xe không có quà. */
-function departSet(silent){
+/* ===== HỘP CHỐT LÊN HÀNG: sửa được GIỜ LÊN KHO và SỐ PHẦN THỰC TẾ XUẤT ===== */
+function nowLocal(d){d=d||new Date();
+ const z=n=>String(n).padStart(2,'0');
+ return d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate())+'T'+z(d.getHours())+':'+z(d.getMinutes());
+}
+function fmtLocal(v){ /* '2026-09-21T08:30' -> '08:30 21/9/2026' */
+ const m=String(v||'').match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+ if(!m)return String(v||'');
+ return m[4]+':'+m[5]+' '+(+m[3])+'/'+(+m[2])+'/'+m[1];
+}
+function departUI(){
+ let need=0,nk=0;
+ D.kh.forEach(k=>{if(onTruck(k)){need+=SL(k);nk++}});
+ const P=loadCalc();
+ let keepN=0;if(P&&P.pSur)keepN=P.pSur;
+ const curT=(D.depart&&D.depart.tsISO)?D.depart.tsISO:nowLocal();
+ const curA=(D.depart&&D.depart.act!=null)?D.depart.act:need;
+ $('mbox').innerHTML='<h3 style="margin:0 0 3px">🚚 '+(D.depart?'Sửa phiếu lên hàng':'Xe rời kho — chốt số quà lên xe')+'</h3>'+
+  '<div class="hint" style="margin-bottom:8px">Chốt xong máy mới theo dõi được dư/thiếu khi ở kho có khách tới lấy quà lúc anh đang đi đường.</div>'+
+  '<div class="lb">Giờ lên hàng tại kho</div>'+
+  '<input type="datetime-local" id="dp_t" value="'+curT+'">'+
+  '<div class="hint" style="margin-top:3px">Sửa được — ghi đúng giờ xe thật sự rời kho, không nhất thiết là lúc bấm nút.</div>'+
+  '<div class="lb">Số phần thực tế xuất kho</div>'+
+  '<div class="row"><input type="number" id="dp_n" min="0" max="9999" value="'+curA+'" oninput="dpCheck()">'+
+  '<button class="fix sm" onclick="$(\'dp_n\').value='+need+';dpCheck()">= '+need+' theo danh sách</button></div>'+
+  '<div class="hint" id="dp_msg" style="margin-top:4px">&nbsp;</div>'+
+  '<div class="card" style="margin-top:8px"><b>Theo danh sách</b>'+
+  '<div class="hint">Cần chở: <b style="color:#7dd3fc">'+need+' phần</b> cho '+nk+' khách'+
+  (keepN?'<br>Đang còn <b style="color:#fdba74">'+keepN+' phần dư</b> trên xe từ lượt trước':'')+'</div></div>'+
+  '<div class="row" style="margin-top:10px"><button onclick="closeM()">Huỷ</button>'+
+  '<button class="pri" onclick="departSave()">✔ Chốt lên hàng</button></div>';
+ $('modal').classList.add('on');dpCheck();
+}
+function dpCheck(){
+ let need=0;D.kh.forEach(k=>{if(onTruck(k))need+=SL(k)});
+ const v=parseInt($('dp_n').value,10),m=$('dp_msg');
+ if(!isFinite(v)||v<0){m.innerHTML='<span style="color:#fca5a5">Nhập số phần thực tế đã xuất kho.</span>';return}
+ const d=v-need;
+ if(!d)m.innerHTML='<span style="color:#86efac">✔ Khớp danh sách — '+need+' phần.</span>';
+ else if(d>0)m.innerHTML='<span style="color:#fdba74">Xuất dư <b>'+d+' phần</b> so với danh sách — máy ghi là quà mang theo phòng hờ, chưa gán cho khách nào.</span>';
+ else m.innerHTML='<span style="color:#fca5a5">Xuất thiếu <b>'+(-d)+' phần</b> so với danh sách — sẽ có nhà không đủ quà khi tới nơi.</span>';
+}
+function departSave(){
+ const t=$('dp_t').value||nowLocal();
+ const v=parseInt($('dp_n').value,10);
+ if(!isFinite(v)||v<0){alert('Số phần thực tế xuất kho chưa hợp lệ.');return}
+ closeM();departSet(true,{tsISO:t,act:v});
+ const R=loadCalc();
+ alert('🚚 Đã chốt lên hàng lúc '+fmtLocal(t)+'.\n\n'+
+  'Thực tế xuất kho: '+v+' phần\nTheo danh sách: '+(R?R.took:v)+' phần'+
+  ((R&&R.spare)?'\n\n'+(R.spare>0?'Mang dư '+R.spare+' phần phòng hờ.':'Thiếu '+(-R.spare)+' phần so với danh sách.'):'\n\n✔ Khớp.'));
+}
+function departSet(silent,opt){
  /* đang có chuyến chạy dở và trên xe còn quà dư → hỏi có trả về kho chưa */
  let keep={},kn=0;
  if(!silent){const P=loadCalc();
@@ -2630,7 +2745,9 @@ function departSet(silent){
  D.kh.forEach(k=>{if(onTruck(k)){L[k.id]=SL(k);n+=SL(k)}});
  Object.keys(keep).forEach(id=>{L[id]=(L[id]||0)+keep[id];n+=keep[id]});
  if(!n){alert('Không có phần quà nào để chốt lên xe.');return false}
- D.depart={ts:new Date().toLocaleString('vi-VN'),load:L,parts:n,n:Object.keys(L).length};
+ const iso=(opt&&opt.tsISO)?opt.tsISO:nowLocal();
+ D.depart={ts:fmtLocal(iso),tsISO:iso,load:L,parts:n,n:Object.keys(L).length,
+           act:(opt&&opt.act!=null)?opt.act:n};
  save();render();routeView();
  if(!silent)alert('🚚 Đã chốt xe rời kho lúc '+D.depart.ts+'.\n\nTrên xe: '+n+' phần cho '+D.depart.n+' khách.'+
   (kn?'\n— trong đó '+kn+' phần dư từ trước vẫn còn trên xe, chưa trả về kho.':'')+'\n\n'+
@@ -2669,6 +2786,8 @@ function loadCalc(){
  const S=a=>a.reduce((t,x)=>t+x.n,0);
  R.pDone=S(R.done);R.pOn=S(R.onboard);R.pSur=S(R.sur);R.pMiss=S(R.miss);
  R.took=D.depart.parts;
+ R.act=(D.depart.act!=null)?D.depart.act:R.took;
+ R.spare=R.act-R.took;           /* >0: mang dư phòng hờ • <0: xuất thiếu */
  R.bal=(R.pDone+R.pOn+R.pSur)===R.took;
  return R;
 }
@@ -2676,18 +2795,24 @@ function loadUI(){
  const R=loadCalc();
  if(!R){$('mbox').innerHTML='<h3>Chưa chốt xe rời kho</h3>'+
   '<div class="hint" style="margin:6px 0">Bấm nút <b>🚚 Xe đã rời kho</b> để chốt số quà lên xe. Sau đó máy mới theo dõi được dư/thiếu.</div>'+
-  '<div class="row"><button onclick="closeM()">Đóng</button><button class="pri" onclick="closeM();departSet()">🚚 Chốt ngay</button></div>';
+  '<div class="row"><button onclick="closeM()">Đóng</button><button class="pri" onclick="closeM();departUI()">🚚 Chốt ngay</button></div>';
   $('modal').classList.add('on');return}
  const row=(x,c)=>'<div class="hint" style="margin-top:3px">• <b>'+esc(x.k.ten)+'</b> — <b style="color:'+c+'">'+x.n+' phần</b> · '+esc(x.why||'')+'</div>';
  let h='<h3 style="margin:0 0 3px">📦 Quà trên xe — dư / thiếu</h3>'+
-  '<div class="hint" style="margin-bottom:8px">Xe rời kho lúc <b>'+esc(D.depart.ts)+'</b> với <b>'+R.took+' phần</b> cho '+D.depart.n+' khách.</div>';
+  '<div class="hint" style="margin-bottom:6px">Lên hàng lúc <b>'+esc(D.depart.ts)+'</b> • thực tế xuất kho <b style="color:#7dd3fc">'+R.act+' phần</b>'+
+  (R.spare?' <span style="color:'+(R.spare>0?'#fdba74':'#fca5a5')+'">('+(R.spare>0?'dư '+R.spare:'thiếu '+(-R.spare))+' so với danh sách '+R.took+')</span>':' — khớp danh sách')+
+  ' cho '+D.depart.n+' khách.</div>'+
+  '<div class="row" style="margin-bottom:8px"><button class="fix sm" onclick="closeM();departUI()">✏️ Sửa giờ lên kho / số thực tế</button></div>';
  h+='<div class="stat">'+
   '<div><b style="color:#16a34a">'+R.pDone+'</b><span>Đã giao</span></div>'+
   '<div><b style="color:#2f81f7">'+R.pOn+'</b><span>Còn trên xe chờ giao</span></div>'+
   '<div><b style="color:#f97316">'+R.pSur+'</b><span>DƯ — chở về kho</span></div>'+
   '<div><b style="color:#fca5a5">'+R.pMiss+'</b><span>THIẾU — chưa có trên xe</span></div></div>';
  h+='<table><tr><th>Diễn giải</th><th style="text-align:right">Phần</th></tr>'+
-  '<tr><td>Lấy lên xe lúc rời kho</td><td style="text-align:right"><b>'+R.took+'</b></td></tr>'+
+  '<tr><td><b>Thực tế xuất kho</b></td><td style="text-align:right"><b style="color:#7dd3fc">'+R.act+'</b></td></tr>'+
+  (R.spare?'<tr><td style="padding-left:18px">'+(R.spare>0?'📦 Mang dư phòng hờ, chưa gán khách':'⚠ Xuất thiếu so với danh sách')+
+    '</td><td style="text-align:right"><b style="color:'+(R.spare>0?'#fdba74':'#fca5a5')+'">'+(R.spare>0?'+':'')+R.spare+'</b></td></tr>':'')+
+  '<tr><td>Theo danh sách phải chở</td><td style="text-align:right"><b>'+R.took+'</b></td></tr>'+
   '<tr><td style="padding-left:18px">✅ Đã giao dọc đường</td><td style="text-align:right">'+R.pDone+'</td></tr>'+
   '<tr><td style="padding-left:18px">🚚 Còn trên xe, phải giao tiếp</td><td style="text-align:right">'+R.pOn+'</td></tr>'+
   '<tr><td style="padding-left:18px">↩️ Dư — chở ngược về kho</td><td style="text-align:right">'+R.pSur+'</td></tr>'+
@@ -2700,7 +2825,7 @@ function loadUI(){
  if(R.miss.length)h+='<div class="card" style="margin-top:8px;border-color:#ef4444"><b style="color:#fca5a5">⚠ THIẾU '+R.pMiss+' phần — trên xe KHÔNG có</b>'+
   R.miss.map(x=>row(x,'#fca5a5')).join('')+
   '<div class="hint" style="margin-top:5px">Mấy nhà này đang nằm trên tuyến nhưng quà còn ở kho. Phải ghé kho lấy thêm, hoặc dời sang chuyến sau.</div>'+
-  '<div class="row" style="margin-top:6px"><button class="fix sm" onclick="closeM();departSet()">🔄 Chốt lại số trên xe (đã ghé kho lấy thêm)</button></div></div>';
+  '<div class="row" style="margin-top:6px"><button class="fix sm" onclick="closeM();departUI()">🔄 Chốt lại số trên xe (đã ghé kho lấy thêm)</button></div></div>';
  if(!R.sur.length&&!R.miss.length)h+='<div class="card" style="margin-top:8px;border-color:var(--ok)"><b style="color:#86efac">✔ Không dư không thiếu</b>'+
   '<div class="hint">Số quà trên xe đúng y lúc rời kho.</div></div>';
  h+='<div class="row" style="margin-top:10px"><button onclick="closeM()">Đóng</button>'+
@@ -2752,9 +2877,12 @@ function khoPhieu(){
    :'<div class="hint" style="color:#86efac;margin-top:4px">✔ Cân đối khớp: '+S(g.len)+' + '+P+' + '+B+' + '+C+' = '+tot+' phần</div>';
  (function(){const R=loadCalc();if(!R)return;
   h+='<div class="card" style="margin-top:8px;border-color:'+((R.pSur||R.pMiss)?'#f97316':'var(--ok)')+'">'+
-   '<b>🚚 Chuyến đang chạy — rời kho lúc '+esc(D.depart.ts)+'</b>'+
+   '<b>🚚 Chuyến đang chạy — lên hàng lúc '+esc(D.depart.ts)+'</b>'+
    '<table style="margin-top:5px"><tr><th>Diễn giải</th><th style="text-align:right">Phần</th></tr>'+
-   '<tr><td>Đã lấy lên xe</td><td style="text-align:right"><b>'+R.took+'</b></td></tr>'+
+   '<tr><td><b>Thực tế xuất kho</b></td><td style="text-align:right"><b style="color:#7dd3fc">'+R.act+'</b></td></tr>'+
+   (R.spare?'<tr><td style="padding-left:18px">'+(R.spare>0?'📦 Mang dư phòng hờ':'⚠ Xuất thiếu so với danh sách')+
+     '</td><td style="text-align:right"><b style="color:'+(R.spare>0?'#fdba74':'#fca5a5')+'">'+(R.spare>0?'+':'')+R.spare+'</b></td></tr>':'')+
+   '<tr><td>Theo danh sách phải chở</td><td style="text-align:right"><b>'+R.took+'</b></td></tr>'+
    '<tr><td style="padding-left:18px">✅ Đã giao dọc đường</td><td style="text-align:right">'+R.pDone+'</td></tr>'+
    '<tr><td style="padding-left:18px">🚚 Còn trên xe chờ giao</td><td style="text-align:right">'+R.pOn+'</td></tr>'+
    '<tr><td style="padding-left:18px">↩️ Dư — chở về nhập lại kho</td><td style="text-align:right"><b style="color:#fdba74">'+R.pSur+'</b></td></tr>'+
@@ -3581,6 +3709,8 @@ function fillTM(){const t=TM();$('tm_start').value=t.start;$('tm_vT').value=t.vT
 function setOpt(){D.dmode=$('dmode').value;D.avoidFerry=$('opFerry').checked;D.roundTrip=$('opBack').checked;
  D.bikeCap=Math.max(0,parseInt($('bikeCap').value,10)||0);
  D.passR=Math.max(10,parseInt($('passR').value,10)||150);
+ D.passFirst=$('opPass').checked;
+ D.passTol=Math.max(0,Math.min(100,parseInt($('passTol').value,10)||25));
  D.corW=Math.max(60,parseInt($('corW').value,10)||200);
  D.prov=$('provSel').value;D.apikey=$('apikey').value.trim();
  D.truckCap=Math.max(0,parseInt($('truckCap').value,10)||0);save();render();
@@ -3612,7 +3742,7 @@ $('dmode').value=D.dmode||'road';$('opFerry').checked=D.avoidFerry!==false;$('op
 $('osrmUrl').value=D.osrm||'https://router.project-osrm.org';
 $('bikeCap').value=D.bikeCap||'';
 $('truckCap').value=D.truckCap||'';
-$('passR').value=D.passR||150;
+$('passR').value=D.passR||150;$('opPass').checked=D.passFirst===true;$('passTol').value=(D.passTol==null?25:D.passTol);
 $('corW').value=D.corW||200;
 $('provSel').value=D.prov||'osrm';$('apikey').value=D.apikey||'';
 fillTM();
